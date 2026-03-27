@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: maven:3.9.6-eclipse-temurin-21
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          chmod +x mvnw
+          ./mvnw -B clean verify
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: jar
+          path: target/*.jar

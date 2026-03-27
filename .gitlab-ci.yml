@@ -1,0 +1,20 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
+stages:
+  - build
+build:
+  stage: build
+  tags:
+    - bas2302
+    - linux
+  image: maven:3.9.6-eclipse-temurin-21
+  script:
+    - chmod +x mvnw
+    - ./mvnw -B clean verify
+
+
+  artifacts:
+    paths:
+      - target/*.jar
+    when: on_success
