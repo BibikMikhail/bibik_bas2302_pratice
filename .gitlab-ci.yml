@@ -6,7 +6,8 @@ stages:
 build:
   stage: build
   tags:
-    - saas-linux-small-amd64
+    - bas2302
+    - linux
   image: maven:3.9.6-eclipse-temurin-21
   script:
     - chmod +x mvnw
