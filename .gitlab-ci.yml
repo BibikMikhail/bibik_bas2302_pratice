@@ -36,3 +36,19 @@ semgrep-sast:
     paths:
       - gl-sast-report.json
     when: always
+
+dependency-check:
+  stage: test
+  tags:
+    - bas2302
+    - linux
+  image: maven:3.9.6-eclipse-temurin-21
+  needs:
+    - build
+  script:
+    - chmod +x mvnw
+    - ./mvnw -B dependency-check:check
+  artifacts:
+    paths:
+      - target/dependency-check-report.html
+    when: always
