@@ -64,3 +64,31 @@ jobs:
         with:
           name: semgrep-sarif
           path: semgrep.sarif
+
+  dependency-check:
+    runs-on: ubuntu-latest
+    needs: build
+    container:
+      image: maven:3.9.6-eclipse-temurin-21
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure suppression file
+        run: |
+          if [ ! -f dependency-check-suppressions.xml ]; then
+            printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd"></suppressions>' > dependency-check-suppressions.xml
+          fi
+
+      - name: OWASP Dependency-Check
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          chmod +x mvnw
+          ./mvnw -B org.owasp:dependency-check-maven:11.1.0:check -Dformats=HTML -DsuppressionFile=dependency-check-suppressions.xml
+
+      - name: Upload dependency-check HTML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: target/dependency-check-report.html
