@@ -1,27 +1,17 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
 stages:
   - build
-  - test
-
-build-job:
+build:
   stage: build
   tags:
     - saas-linux-small-amd64
   image: maven:3.9.6-eclipse-temurin-21
   script:
-    - mvn clean compile test package
+    - chmod +x mvnw
+    - ./mvnw -B clean verify
   artifacts:
     paths:
-      - ./target/*.jar
+      - target/*.jar
     when: on_success
-
-sast-testing:
-  stage: test
-  tags:
-    - saas-linux-small-amd64
-  image: semgrep/semgrep:latest
-  script:
-    - semgrep scan --sarif --output gl-sast-report.json /builds/BibikMikhail/bas2302_bibik_practice
-  artifacts:
-    reports:
-      sast: gl-sast-report.json
-    when: always
