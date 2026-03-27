@@ -1,0 +1,27 @@
+stages:
+  - build
+  - test
+
+build-job:
+  stage: build
+  tags:
+    - saas-linux-small-amd64
+  image: maven:3.9.6-eclipse-temurin-21
+  script:
+    - mvn clean compile test package
+  artifacts:
+    paths:
+      - ./target/*.jar
+    when: on_success
+
+sast-testing:
+  stage: test
+  tags:
+    - saas-linux-small-amd64
+  image: semgrep/semgrep:latest
+  script:
+    - semgrep scan --sarif --output gl-sast-report.json /builds/BibikMikhail/bas2302_bibik_practice
+  artifacts:
+    reports:
+      sast: gl-sast-report.json
+    when: always
