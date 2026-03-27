@@ -1,8 +1,11 @@
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
+
 stages:
   - build
+  - test
+
 build:
   stage: build
   tags:
@@ -12,9 +15,24 @@ build:
   script:
     - chmod +x mvnw
     - ./mvnw -B clean verify
-
-
   artifacts:
     paths:
       - target/*.jar
     when: on_success
+
+semgrep-sast:
+  stage: test
+  tags:
+    - bas2302
+    - linux
+  image: semgrep/semgrep:latest
+  needs:
+    - build
+  script:
+    - semgrep scan --config auto --gitlab-sast --output gl-sast-report.json "${CI_PROJECT_DIR}"
+  artifacts:
+    reports:
+      sast: gl-sast-report.json
+    paths:
+      - gl-sast-report.json
+    when: always
