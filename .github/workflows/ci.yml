@@ -29,13 +29,22 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Semgrep
-        run: python3 -m pip install semgrep
+        run: python3 -m pip install --upgrade pip semgrep
+
       - name: Semgrep scan
-        continue-on-error: true
-        run: python3 -m semgrep scan --config auto --sarif --output semgrep.sarif .
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -e
+          python3 -m semgrep --version
+          python3 -m semgrep scan --config auto --sarif --output "$GITHUB_WORKSPACE/semgrep.sarif" "$GITHUB_WORKSPACE" || true
+          if [ ! -f "$GITHUB_WORKSPACE/semgrep.sarif" ]; then
+            printf '%s\n' '{"$schema":"https://json.schemastore.org/sarif-2.1.0.json","version":"2.1.0","runs":[]}' > "$GITHUB_WORKSPACE/semgrep.sarif"
+          fi
+          ls -la "$GITHUB_WORKSPACE/semgrep.sarif"
+
       - name: Upload SARIF
-        if: always()
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
