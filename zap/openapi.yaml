@@ -1,0 +1,25 @@
+openapi: 3.0.3
+info:
+  title: course-management API
+  version: "1.0.0"
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /api/courses:
+    get:
+      summary: Список курсов
+      responses:
+        "200":
+          description: OK
+  /api/students:
+    get:
+      summary: Список студентов
+      responses:
+        "200":
+          description: OK
+  /actuator/health:
+    get:
+      summary: Health (Spring Boot Actuator)
+      responses:
+        "200":
+          description: OK

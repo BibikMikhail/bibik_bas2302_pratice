@@ -3,8 +3,11 @@ name: CI
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
 
 jobs:
   build:
@@ -13,82 +16,91 @@ jobs:
       image: maven:3.9.6-eclipse-temurin-21
     steps:
       - uses: actions/checkout@v4
-
       - name: Build and test
         run: |
           chmod +x mvnw
           ./mvnw -B clean verify
-
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
           name: jar
           path: target/*.jar
 
-  sast:
-    runs-on: ubuntu-latest
+  dast-baseline:
     needs: build
-    permissions:
-      security-events: write
-      contents: read
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Semgrep
-        run: |
-          python3 -m pip install --upgrade pip semgrep
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Semgrep scan
-        run: |
-          semgrep --version
-          set +e
-          semgrep scan --config auto --sarif --output "$GITHUB_WORKSPACE/semgrep.sarif" "$GITHUB_WORKSPACE"
-          code=$?
-          set -e
-          if [ ! -f "$GITHUB_WORKSPACE/semgrep.sarif" ]; then
-            printf '%s\n' '{"$schema":"https://json.schemastore.org/sarif-2.1.0.json","version":"2.1.0","runs":[]}' > "$GITHUB_WORKSPACE/semgrep.sarif"
-          fi
-          ls -la "$GITHUB_WORKSPACE/semgrep.sarif"
-          if [ "$code" -gt 1 ]; then
-            echo "::warning::Semgrep exited with $code"
-          fi
-
-      - name: Upload SARIF to Code Scanning
-        uses: github/codeql-action/upload-sarif@v4
+      - name: Host IP for ZAP container (Linux runner)
+        id: net
+        run: echo "host=$(ip -4 route show default | cut -d' ' -f3)" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
         with:
-          sarif_file: semgrep.sarif
-
-      - name: Upload SARIF as artifact
-        uses: actions/upload-artifact@v4
+          name: jar
+          path: target
+      - uses: actions/setup-java@v4
         with:
-          name: semgrep-sarif
-          path: semgrep.sarif
-
-  dependency-check:
-    runs-on: ubuntu-latest
-    needs: build
-    container:
-      image: maven:3.9.6-eclipse-temurin-21
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Ensure suppression file
+          distribution: temurin
+          java-version: "21"
+      - name: Start application
         run: |
-          if [ ! -f dependency-check-suppressions.xml ]; then
-            printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd"></suppressions>' > dependency-check-suppressions.xml
-          fi
-
-      - name: OWASP Dependency-Check
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          chmod +x mvnw
-          ./mvnw -B org.owasp:dependency-check-maven:12.1.3:check -Dformats=HTML -DsuppressionFile=dependency-check-suppressions.xml
-
-      - name: Upload dependency-check HTML
+          mkdir -p zap/out
+          JAR=$(ls target/*.jar | grep -v '\.original$' | head -n1)
+          java -jar "$JAR" &
+          sleep 25
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.9.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: "http://${{ steps.net.outputs.host }}:8080"
+          rules_file_name: zap/zap-rules.tsv
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-dast-baseline
+          cmd_options: "-I -r zap/out/zap-baseline-report.html -J zap/out/zap-baseline-report.json"
+      - name: Upload DAST reports (baseline)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dependency-check-report
-          path: target/dependency-check-report.html
+          name: dast-baseline-reports
+          path: zap/out/
+
+  dast-api:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host IP for ZAP container (Linux runner)
+        id: net
+        run: echo "host=$(ip -4 route show default | cut -d' ' -f3)" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: jar
+          path: target
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Start application
+        run: |
+          mkdir -p zap/out
+          JAR=$(ls target/*.jar | grep -v '\.original$' | head -n1)
+          java -jar "$JAR" &
+          sleep 25
+      - name: ZAP API Scan
+        uses: zaproxy/action-api-scan@v0.10.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: zap/openapi.yaml
+          format: openapi
+          rules_file_name: zap/zap-rules.tsv
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap-dast-api
+          cmd_options: "-O http://${{ steps.net.outputs.host }}:8080 -I -r zap/out/zap-api-report.html -J zap/out/zap-api-report.json"
+      - name: Upload DAST reports (API)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dast-api-reports
+          path: zap/out/
