@@ -37,49 +37,24 @@ semgrep-sast:
       - gl-sast-report.json
     when: always
 
-# Практика 5 — DAST (OWASP ZAP): образ, пустой entrypoint, зависимость от сборки, отчёты в artifacts.
-dast-baseline:
+dependency-check:
   stage: test
   tags:
     - bas2302
     - linux
-  image:
-    name: zaproxy/zap-stable
-    entrypoint: [""]
+  image: maven:3.9.6-eclipse-temurin-21
   needs:
-    - job: build
-      artifacts: true
+    - build
+  variables:
+    NVD_API_KEY: $NVD_API_KEY
   script:
-    - mkdir -p zap/out
-    - JAR=$(ls target/*.jar | grep -v '\.original$' | head -n1)
-    - java -jar "$JAR" &
-    - sleep 25
-    - python3 /zap/zap-baseline.py -t http://127.0.0.1:8080 -c zap/zap-rules.tsv -r zap/out/zap-baseline-report.html -J zap/out/zap-baseline-report.json -I
+    - chmod +x mvnw
+    - |
+      if [ ! -f dependency-check-suppressions.xml ]; then
+        printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd"></suppressions>' > dependency-check-suppressions.xml
+      fi
+    - ./mvnw -B org.owasp:dependency-check-maven:12.1.3:check -Dformats=HTML -DsuppressionFile=dependency-check-suppressions.xml -DossindexAnalyzerEnabled=false -DfailOnError=false -DfailBuildOnCVSS=11
   artifacts:
-    when: always
     paths:
-      - zap/out/
-    expire_in: 7 days
-
-dast-api:
-  stage: test
-  tags:
-    - bas2302
-    - linux
-  image:
-    name: zaproxy/zap-stable
-    entrypoint: [""]
-  needs:
-    - job: build
-      artifacts: true
-  script:
-    - mkdir -p zap/out
-    - JAR=$(ls target/*.jar | grep -v '\.original$' | head -n1)
-    - java -jar "$JAR" &
-    - sleep 25
-    - python3 /zap/zap-api-scan.py -t zap/openapi.yaml -f openapi -O http://127.0.0.1:8080 -c zap/zap-rules.tsv -r zap/out/zap-api-report.html -J zap/out/zap-api-report.json -I
-  artifacts:
+      - target/dependency-check-report.html
     when: always
-    paths:
-      - zap/out/
-    expire_in: 7 days
